@@ -118,7 +118,7 @@ def main():
     pprint.pprint(vars(args))
 
     set_seed(args.seed)
-    dataset = load_dataset("json", data_files=f"obfuscate/{args.style}_classifier_examples.jsonl")['train'].remove_columns(['book_id', 'title', 'date'])
+    dataset = load_dataset("json", data_files=f"pre_obfuscation/{args.style}_classifier_examples.jsonl")['train'].remove_columns(['book_id', 'title', 'date'])
     
     for direction in ["less", "more"]:
         train_adapter(dataset, direction, args)    

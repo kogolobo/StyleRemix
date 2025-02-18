@@ -37,7 +37,7 @@ def main():
     pprint.pprint(vars(args))
 
     set_seed(args.seed)
-    dataset = load_dataset("json", data_files=f"obfuscate/{args.style}_classifier_examples.jsonl")['train'].remove_columns(['book_id', 'title', 'date'])
+    dataset = load_dataset("json", data_files=f"pre_obfuscation/{args.style}_classifier_examples.jsonl")['train'].remove_columns(['book_id', 'title', 'date'])
     dataset_less = dataset.map(
         lambda x: {
             "text": x[f'{args.style}_less'],

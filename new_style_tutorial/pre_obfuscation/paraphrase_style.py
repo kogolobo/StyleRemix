@@ -10,7 +10,7 @@ from functools import partial
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from typing import List, Tuple
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from vllm import LLM, SamplingParams
 
 
 @dataclass
@@ -67,10 +67,14 @@ class LocalParaphraser(Paraphraser):
     def __init__(self, style: str, model_name: str, prompts: ParaphrasePrompt, batch_size: int = 16):
         super().__init__(style, model_name, prompts)
         self.batch_size = batch_size
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(self.model_name, device_map='auto')
-        if self.model.generation_config.pad_token_id is None:
-            self.model.generation_config.pad_token_id = self.tokenizer.eos_token_id
+        self.llm = LLM(model=self.model_name)
+        self.sampling_params = SamplingParams(
+            n=1, 
+            max_tokens=200,
+            skip_special_tokens=True,
+            spaces_between_special_tokens=False,
+            include_stop_str_in_output=False
+        )
 
     def make_completions(self, prompt: str, texts: List[str]) -> List[str]:
         messages = [
@@ -80,22 +84,24 @@ class LocalParaphraser(Paraphraser):
             ]
             for text in texts
         ]
-        gen_pipeline = pipeline('text-generation', model=self.model, tokenizer=self.tokenizer)
-        generator = partial(gen_pipeline, max_new_tokens=200, num_return_sequences=1, return_full_text=False)
-        completions = []
-        for output in tqdm.tqdm(generator(messages, batch_size=self.batch_size), desc=f"Paraphrasing"):
-            completions.append(output[0]['generated_text'])
+        outputs = self.llm.chat(
+            messages=messages, 
+            sampling_params=self.sampling_params, 
+            use_tqdm=True, 
+            add_generation_prompt=False
+        )
+        completions = [output.outputs[0].text for output in outputs]
             
         return completions
 
 def main():
     parser = ArgumentParser()
     parser.add_argument("--use_openai", action="store_true")
-    parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.2-3B-Instruct")
+    parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--prompts", type=str, default="obfuscate/sarcasm.toml")
-    parser.add_argument("--adapter_base_texts", type=str, default="obfuscate/disc_base_texts.jsonl")
-    parser.add_argument("--classifier_base_texts", type=str, default="obfuscate/disc_for_classifiers_base_texts.jsonl")
+    parser.add_argument("--prompts", type=str, default="pre_obfuscation/sarcasm.toml")
+    parser.add_argument("--adapter_base_texts", type=str, default="pre_obfuscation/disc_base_texts.jsonl")
+    parser.add_argument("--classifier_base_texts", type=str, default="pre_obfuscation/disc_for_classifiers_base_texts.jsonl")
     args = parser.parse_args()
     pprint.pprint(vars(args))
     
@@ -108,12 +114,12 @@ def main():
     
     adapter_base_texts = pd.read_json(args.adapter_base_texts, lines=True)
     adapter_paraphrased = paraphraser.paraphrase(adapter_base_texts)
-    adapter_paraphrased.to_json(f"obfuscate/{style}_adapter_examples.jsonl", lines=True, orient='records')
+    adapter_paraphrased.to_json(f"pre_obfuscation/{style}_adapter_examples.jsonl", lines=True, orient='records')
     
     if args.classifier_base_texts is not None:
         classifier_base_texts = pd.read_json(args.classifier_base_texts, lines=True)
         classifier_paraphrased = paraphraser.paraphrase(classifier_base_texts)
-        classifier_paraphrased.to_json(f"obfuscate/{style}_classifier_examples.jsonl", lines=True, orient='records')
+        classifier_paraphrased.to_json(f"pre_obfuscation/{style}_classifier_examples.jsonl", lines=True, orient='records')
 
 if __name__ == "__main__":
     main()
