@@ -93,6 +93,8 @@ def train_adapter(dataset, direction, args):
     )
 
     trainer.train()
+    tokenizer.save_pretrained(out_path)
+    print(f"Adapter saved to {out_path}")
 
 def main():
     parser = ArgumentParser()
@@ -116,7 +118,7 @@ def main():
     pprint.pprint(vars(args))
 
     set_seed(args.seed)
-    dataset = load_dataset("json", data_files=f"/home/kogolobo/repos/StyleRemix/new_style_tutorial/{args.style}_classifier_examples.jsonl")['train'].remove_columns(['book_id', 'title', 'date'])
+    dataset = load_dataset("json", data_files=f"obfuscate/{args.style}_classifier_examples.jsonl")['train'].remove_columns(['book_id', 'title', 'date'])
     
     for direction in ["less", "more"]:
         train_adapter(dataset, direction, args)    

@@ -37,7 +37,7 @@ def main():
     pprint.pprint(vars(args))
 
     set_seed(args.seed)
-    dataset = load_dataset("json", data_files=f"{args.style}_classifier_examples.jsonl")['train'].remove_columns(['book_id', 'title', 'date'])
+    dataset = load_dataset("json", data_files=f"obfuscate/{args.style}_classifier_examples.jsonl")['train'].remove_columns(['book_id', 'title', 'date'])
     dataset_less = dataset.map(
         lambda x: {
             "text": x[f'{args.style}_less'],
@@ -65,9 +65,14 @@ def main():
     dataset = dataset.map(tokenize_function, batched=True)
     dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
     
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = AutoModelForSequenceClassification.from_pretrained(args.model_name, num_labels=len(LABEL_TO_ID))
-    model.to(device)
+    style_label_to_id = {f"{args.style}_{label}": id for label, id in LABEL_TO_ID.items()}
+    model = AutoModelForSequenceClassification.from_pretrained(
+        args.model_name, 
+        num_labels=len(style_label_to_id),
+        label2id=style_label_to_id,
+        id2label={id: label for label, id in style_label_to_id.items()},
+        device_map='auto'
+    )
 
     out_path = f'./classifiers/{args.style}_classifier'
     training_args = TrainingArguments(
@@ -104,6 +109,8 @@ def main():
     trainer.train()
     eval_results = trainer.evaluate()
     print(f"Validation Accuracy: {eval_results['eval_accuracy']:.4f}")
+    tokenizer.save_pretrained(out_path)
+    print(f"Model saved to {out_path}")
 
 if __name__ == "__main__":
     main()
