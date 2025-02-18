@@ -5,8 +5,6 @@ import pandas as pd
 import json
 from tqdm.auto import tqdm
 
-import sys
-sys.path.append('/home/kogolobo/repos/StyleRemix/new_style_tutorial')
 from obfuscation.evaluation import EvaluationRunner
 from obfuscation.direction_selection import choose_directions_genre_mean, combine_directions
 from obfuscation.remix import RemixRunner
