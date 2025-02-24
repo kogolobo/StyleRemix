@@ -36,10 +36,10 @@ Please make sure you have `gcc` and `nvcc` compilers available in your environme
 
 ### Running Style Remix
 Run `python -m obfuscation.run_styleremix --config obfuscation/styleremix_config.jsonl --input_file <path_to_input_file> --text_key <text_column> --author_key <author_column> --document_key <document_column>` to run StyleRemix.
-    - `--input_file` Accepts the path to a JSON-Lines format data, each line needs following fields:
-        - `--text_key` e.g., `fullText` -- a field containing text to be obfuscated
-        - `--author_key` e.g., `authorIDs` -- a **list** containing IDs of authors to whom this text is attributable
-        - `--document_key` e.g., `documentID` -- a unique identifier for the given text
+- `--input_file` Accepts the path to a JSON-Lines format data, each line needs following fields:
+    - `--text_key` e.g., `fullText` -- a field containing text to be obfuscated
+    - `--author_key` e.g., `authorIDs` -- a **list** containing IDs of authors to whom this text is attributable
+    - `--document_key` e.g., `documentID` -- a unique identifier for the given text
 
 ### Adding a New Style Axis
 **Prerequisite**: To proceed with this guide, you will need to verbally describe the elements of the desired style.
