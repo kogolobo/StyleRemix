@@ -1,7 +1,6 @@
 import os
 import pprint
 import numpy as np
-import torch
 from transformers import (
     AutoTokenizer, 
     AutoModelForSequenceClassification, 
@@ -26,13 +25,14 @@ ID_TO_LABEL = {
 def main():
     parser = ArgumentParser()
     parser.add_argument("--model_name", type=str, default="FacebookAI/roberta-large")
+    parser.add_argument("--save_dir", type=str, default="pre_obfuscation")
     parser.add_argument("--style", type=str, default="sarcasm")
     parser.add_argument("--test_ratio", type=float, default=0.15)
     parser.add_argument("--num_proc", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=5e-5)
-    parser.add_argument("--num_train_epochs", type=int, default=8)
+    parser.add_argument("--num_train_epochs", type=int, default=2)
     args = parser.parse_args()
     pprint.pprint(vars(args))
 
@@ -74,7 +74,7 @@ def main():
         device_map='auto'
     )
 
-    out_path = f'./classifiers/{args.style}_classifier'
+    out_path = os.path.join(args.save_dir, 'classifiers', f'{args.style}_classifier')
     training_args = TrainingArguments(
         run_name=f"{args.style}_classifier",
         optim='adamw_hf',
@@ -82,6 +82,7 @@ def main():
         learning_rate=args.lr,
         output_dir=out_path,
         save_strategy='epoch',
+        save_total_limit=1,
         eval_strategy='epoch',
         num_train_epochs=args.num_train_epochs,
         per_device_train_batch_size=args.batch_size,
@@ -90,7 +91,6 @@ def main():
         logging_steps=10,
         load_best_model_at_end=True,
         metric_for_best_model='accuracy',
-        save_total_limit=1,
         greater_is_better=True
     )
 
@@ -109,6 +109,7 @@ def main():
     trainer.train()
     eval_results = trainer.evaluate()
     print(f"Validation Accuracy: {eval_results['eval_accuracy']:.4f}")
+    trainer.save_model(out_path)
     tokenizer.save_pretrained(out_path)
     print(f"Model saved to {out_path}")
 

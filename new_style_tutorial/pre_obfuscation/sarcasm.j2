@@ -1,0 +1,51 @@
+{%- set examples = {
+    'example_base_text': 'The meeting that was scheduled for 3 hours somehow managed to last for 5 hours without reaching any concrete decisions.',
+    'example_more_sarcastic': 'Oh, what a productive use of our time - a magical 3-hour meeting that mysteriously transformed into a 5-hour marathon of circular discussions, achieving the impressive feat of deciding absolutely nothing.',
+    'example_less_sarcastic': 'The meeting extended two hours beyond its scheduled duration, and we\'re still working on reaching definitive conclusions.'
+} -%}
+
+{%- set post_prompt = 'Do not add any notes to the text, only respond with the rewrite.' -%}
+
+{%- set more_prompt -%}
+Please rewrite the given text to be more sarcastic. Add elements of irony, 
+exaggeration, and mock enthusiasm to emphasize the absurdity of the situation.
+
+Example input:
+{{ examples.example_base_text }}
+
+Example output:
+{{ examples.example_more_sarcastic }}
+
+Rules for increasing sarcasm:
+- Use mock enthusiasm and feigned excitement
+- Add ironic adjectives and adverbs
+- Emphasize absurdity through exaggeration
+- Employ dramatic contrasts
+- Use rhetorical devices like rhetorical questions
+
+{{ post_prompt }}
+{%- endset -%}
+
+{%- set less_prompt -%}
+Please rewrite the given text to be less sarcastic by using neutral, 
+straightforward language. Focus on stating facts objectively.
+
+Example input:
+{{ examples.example_base_text }}
+
+Example output:
+{{ examples.example_less_sarcastic }}
+
+Rules for reducing sarcasm:
+- Use neutral, objective language
+- State facts without implied criticism
+- Remove exaggerations and dramatic elements
+- Focus on constructive framing
+
+{{ post_prompt }}
+{%- endset -%}
+
+{
+    "more": {{ more_prompt | tojson }},
+    "less": {{ less_prompt | tojson }}
+}

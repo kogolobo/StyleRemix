@@ -112,10 +112,15 @@ class ClassifierEvaluator(BaseEvaluator):
         del self.generator
     
 class MultiClassEvaluator(ClassifierEvaluator):
+    def __init__(self, model_name_or_path: str, label: str, out_key: Optional[str] = None):
+        super().__init__(model_name_or_path, label, out_key)
+        self.generation_kwargs.update({'top_k': 1})
+
     def __call__(self, texts: List[str]) -> Dict[str, float]:
         scores = defaultdict(list)
         pipe = partial(self.generator, **self.generation_kwargs)
         for result in tqdm.tqdm(pipe(texts), desc="Classifying"):
-            for prediction in result:
-                scores[prediction['label']].append(prediction['score'])
-        return {label: np.mean(score) for label, score in scores.items()}
+            scores[result[0]['label']].append(result[0]['score'])
+
+        all_labels = self.generator.model.config.id2label.values()
+        return {label: np.mean(scores.get(label, [0])) for label in all_labels}

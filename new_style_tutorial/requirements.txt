@@ -1,0 +1,13 @@
+torch
+transformers
+datasets
+peft
+accelerate
+trl
+vllm
+openai
+numpy
+pandas
+textstat
+nltk
+tqdm

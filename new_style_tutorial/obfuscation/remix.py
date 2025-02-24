@@ -1,4 +1,3 @@
-import math
 from typing import Dict
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -46,17 +45,17 @@ class RemixRunner:
         for direction, weight in directions.items():
             if weight is not None and weight != 0:    
                 if 'type' in direction:
-                    norm_directions[direction] = math.abs(weight)
+                    norm_directions[direction] = abs(weight)
                 elif weight < 0:
                     direction = direction.replace("more", "less")
-                    norm_directions[direction] = math.abs(weight)
+                    norm_directions[direction] = abs(weight)
                 else:
                     norm_directions[direction] = weight
                     
         return norm_directions
     
     def replace_adapters(self, directions: Dict[str, float]):
-        adapter_name = '-'.join([f"{direction}_{100 * weight}" for direction, weight in directions.items()])
+        adapter_name = '-'.join([f"{direction}_{100*weight:.0f}" for direction, weight in directions.items()])
         if adapter_name != self.curr_adapter_name:
             self.model.add_weighted_adapter(
                 list(directions.keys()),

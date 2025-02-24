@@ -58,7 +58,7 @@ def main():
     author_data = author_data.groupby(args.document_key).agg(agg_rules).reset_index()
     
     remix_runner = RemixRunner(styleremix_config['adapters'])
-    tqdm.pandas("Processing texts")
+    tqdm.pandas(desc="Processing texts", total=len(author_data))
     author_data[args.output_key] = author_data.progress_apply(
         lambda row: remix_runner.remix(row[args.text_key], row['StyleRemix_directions']), axis=1
     )

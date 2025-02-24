@@ -1,7 +1,6 @@
 import math
 import os
 import pprint
-import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, set_seed
 from tokenizers.processors import TemplateProcessing
@@ -54,7 +53,7 @@ def train_adapter(dataset, direction, args):
     model = AutoModelForCausalLM.from_pretrained(args.model_name)
     model.resize_token_embeddings(len(tokenizer))
     
-    out_path = f'./adapters/{args.style}_{direction}'
+    out_path = os.path.join(args.save_dir, 'adapters', f'{args.style}_{direction}')
     steps = len(dataset['train'])/(args.train_batch_size*torch.cuda.device_count())
     save_steps = math.ceil(steps / args.save_ratio)
     training_args = SFTConfig(
@@ -93,18 +92,20 @@ def train_adapter(dataset, direction, args):
     )
 
     trainer.train()
+    trainer.model.save_pretrained(out_path)
     tokenizer.save_pretrained(out_path)
     print(f"Adapter saved to {out_path}")
 
 def main():
     parser = ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Meta-Llama-3-8B")
+    parser.add_argument("--save_dir", type=str, default="pre_obfuscation")
     parser.add_argument("--style", type=str, default="sarcasm")
     parser.add_argument("--test_ratio", type=float, default=0.15)
     parser.add_argument("--num_proc", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     
-    parser.add_argument("--lora_r", type=int, default=16)
+    parser.add_argument("--lora_r", type=int, default=32)
     parser.add_argument("--lora_alpha", type=float, default=32.0)
     parser.add_argument("--lora_dropout", type=float, default=0.01)
     
@@ -112,7 +113,7 @@ def main():
     parser.add_argument("--eval_batch_size", type=int, default=6)
     parser.add_argument("--max_seq_length", type=int, default=512)
     parser.add_argument("--lr", type=float, default=5e-5)
-    parser.add_argument("--num_train_epochs", type=int, default=8)
+    parser.add_argument("--num_train_epochs", type=int, default=5)
     parser.add_argument("--save_ratio", type=int, default=4)
     args = parser.parse_args()
     pprint.pprint(vars(args))

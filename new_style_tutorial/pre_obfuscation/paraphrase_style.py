@@ -1,17 +1,18 @@
 import os
 import pprint
-import tomllib
 import openai
 import tqdm
+import json
+import tomllib
 import pandas as pd
 
+from jinja2 import Template
 from dataclasses import dataclass
-from functools import partial
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from typing import List, Tuple
 from vllm import LLM, SamplingParams
-
+from transformers import AutoTokenizer
 
 @dataclass
 class ParaphrasePrompt:
@@ -64,9 +65,8 @@ class OpenAIParaphraser(Paraphraser):
         return completion.choices[0].message['content']
     
 class LocalParaphraser(Paraphraser):
-    def __init__(self, style: str, model_name: str, prompts: ParaphrasePrompt, batch_size: int = 16):
+    def __init__(self, style: str, model_name: str, prompts: ParaphrasePrompt):
         super().__init__(style, model_name, prompts)
-        self.batch_size = batch_size
         self.llm = LLM(model=self.model_name)
         self.sampling_params = SamplingParams(
             n=1, 
@@ -75,6 +75,7 @@ class LocalParaphraser(Paraphraser):
             spaces_between_special_tokens=False,
             include_stop_str_in_output=False
         )
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, use_fast=True)
 
     def make_completions(self, prompt: str, texts: List[str]) -> List[str]:
         messages = [
@@ -90,26 +91,48 @@ class LocalParaphraser(Paraphraser):
             use_tqdm=True, 
             add_generation_prompt=False
         )
-        completions = [output.outputs[0].text for output in outputs]
+        completion_ids = [output.outputs[0].token_ids for output in outputs]
+        completions = [
+            self.postprocess_completion(self.tokenizer.decode(ids, skip_special_tokens=True)) 
+            for ids in completion_ids    
+        ]
             
         return completions
+
+    def postprocess_completion(self, text: str) -> str:
+        if text.startswith("assistant\n\n"):
+            text = text[len("assistant\n\n"):]
+        return text
+    
+def parse_prompts(prompts: str) -> Tuple[str, ParaphrasePrompt]:
+    style, prompt_ext = os.path.splitext(os.path.basename(prompts))
+    if prompt_ext == ".j2":
+        with open(prompts, 'r') as f:
+            template = Template(f.read())
+        prompts = json.loads(template.render())
+    elif prompt_ext == ".json":
+        with open(prompts, 'r') as f:
+            prompts = json.load(f)
+    elif prompt_ext == ".toml":
+        with open(prompts, 'rb') as f:
+            prompts = tomllib.load(f)
+    else:
+        raise ValueError(f"Unsupported prompt format: {prompt_ext}. Supported formats are .j2, .json, .toml")
+    return style, ParaphrasePrompt(**prompts)
 
 def main():
     parser = ArgumentParser()
     parser.add_argument("--use_openai", action="store_true")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--prompts", type=str, default="pre_obfuscation/sarcasm.toml")
+    parser.add_argument("--prompts", type=str, default="pre_obfuscation/sarcasm.j2")
     parser.add_argument("--adapter_base_texts", type=str, default="pre_obfuscation/disc_base_texts.jsonl")
     parser.add_argument("--classifier_base_texts", type=str, default="pre_obfuscation/disc_for_classifiers_base_texts.jsonl")
     args = parser.parse_args()
     pprint.pprint(vars(args))
     
-    with open(args.prompts, 'rb') as f:
-        prompts = tomllib.load(f)
-    prompts = ParaphrasePrompt(**prompts)
-    style, _ = os.path.splitext(os.path.basename(args.prompts))
-    paraphraser_cls = OpenAIParaphraser if args.use_openai else partial(LocalParaphraser, batch_size=args.batch_size)
+    style, prompts = parse_prompts(args.prompts)
+    paraphraser_cls = OpenAIParaphraser if args.use_openai else LocalParaphraser
     paraphraser = paraphraser_cls(style, args.model_name, prompts)
     
     adapter_base_texts = pd.read_json(args.adapter_base_texts, lines=True)
