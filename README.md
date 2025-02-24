@@ -1,18 +1,23 @@
-# StyleRemix: Intepretable Authorship Obfuscation
-This repository contains the code and the scripts to reproduce the experiments from the paper
-[StyleRemix: Interpretable Authorship Obfuscation via Distillation and Perturbation of Style Elements](http://www.arxiv.org/abs/2408.15666). 
+## StyleRemix
 
-**StyleRemix**, is an adaptive and interpretable obfuscation method that perturbs specific, fine-grained style elements of the original input text. StyleRemix uses pre-trained Low Rank Adaptation (LoRA) modules to rewrite inputs along various stylistic axes (e.g., formality, length) while maintaining low computational costs. 
+This repository contains a simplified implementation of [StyleRemix: Interpretable Authorship Obfuscation via Distillation and Perturbation of Style Elements](http://www.arxiv.org/abs/2408.15666). This code is aimed at customization and product integration of the method. The original code can be found [here](https://github.com/jfisher52/StyleRemix).
+
+### Background
+StyleRemix, is an adaptive and interpretable obfuscation method that perturbs specific, fine-grained style elements of the original input text. StyleRemix uses pre-trained Low Rank Adaptation (LoRA) modules to rewrite inputs along various stylistic axes (e.g., formality, length) while maintaining low computational costs.
+
+In general, the StyleRemix method works in two stages:
+  1. **Pre-obfuscation**: prepare the data and models needed for the obfuscation
+    - Prompt an LLM to re-write some base texts along a desired style axis
+    - Train a classifier to decide the degree to which the style axis is present in a new text
+    - Train LoRA adapters to remix the new text either toward or away from the style axis.
+  2. **Obfuscation**: apply the models to new data
+    - Use the classifiers for all available style axes to evaluate an author's style.
+    - Select the most prominent directions for the given author.
+    - Combine the LoRA adapters in the opposite directions to make the author's style more average, thus making them harder to distinguish from other authors' texts.
 
 <p align="center">
 <img src="fig1_wide.png" width="80%">
 </p>
-
-We use StyleRemix for obfuscation on four datasets: presidential speeches, fiction writing, academic articles, and diary-style writings. StyleRemix outperforms state-of-the-art authorship baselines and much larger LLMs on an array of domains on both automatic and human evaluation.
-
-In this repo, we provide code which implements StyleRemix on a Llama-3 8B model for these four datasets.
-
-## QuickStart
 
 ### Setting up the Environment
 To set up the environment to run the code, make sure to have conda installed, then run
@@ -27,50 +32,44 @@ Finally, install the required packages (make sure you are in the root directory)
 
     pip install -r requirements.txt
 
-### Running StyleRemix on Texts
+Please make sure you have `gcc` and `nvcc` compilers available in your environment.
 
-We include the python file `quickstart.py` which shows how to run StyleRemix on some sample texts. This uses LLama-3 8B as the base model, so you must do inference with a GPU. Style element weights can either be randomly set or randomly initialized; see the argparser for the full options. Finally, feel free to replace the sample texts with your own data.
+### Running Style Remix
+Run `python -m obfuscation.run_styleremix --config obfuscation/styleremix_config.jsonl --input_file <path_to_input_file> --text_key <text_column> --author_key <author_column> --document_key <document_column>` to run StyleRemix.
+- `--input_file` Accepts the path to a JSON-Lines format data, each line needs following fields:
+    - `--text_key` e.g., `fullText` -- a field containing text to be obfuscated
+    - `--author_key` e.g., `authorIDs` -- a **list** containing IDs of authors to whom this text is attributable
+    - `--document_key` e.g., `documentID` -- a unique identifier for the given text
 
-You can either import the `remix(...)` method into your own code, or you can run this file directly, for example: 
+### Adding a New Style Axis
+**Prerequisite**: To proceed with this guide, you will need to verbally describe the elements of the desired style.
 
-```
-# Example commands to run StyleRemix on text:
+The general procedure for onboarding a new style to StyleRemix consists of the following steps:
 
-# Passing in manually weights for different style elements (higher=more, lower=less, -1 to 1)
-python3 quickstart.py --length 0.7 --sarcasm 0.9
-
-# Randomly set weights for different style elements
-python3 quickstart.py --random_weights --num_random 3
-```
-
-## Resources
-
-All resources (trained models, demo, etc.) have been organized into the following [huggingface collection](https://huggingface.co/collections/hallisky/authorship-obfuscation-66564c1c1d59bb62eaaf954f). 
-    
-## Datasets
-We use the AuthorMix data which is composed offour different domains, presidential speeches (curated in this paper), fictional novels (curated in this paper), the Extended-Brennan-Greenstadt (Brennan et al., 2012) (amt) and the  Blog Authorship corpus (Schler et al., 2006) (blog), using a range of different authors (3 - 5). All raw datasets can be found under the  `test_data/` folder. Note the file `test_data/AuthorMix` is a torch file with a dictionary containing a key for each domain (Speeches, Novels, AMT, Blog) and the file `test_data/AuthorMix_average_by_author` contains a pre-computed matrix of average automatic evalution by author which is used to choose the weights of the adapters. 
-
-The test dataset can also be downloaded directly from huggingface: [link](https://huggingface.co/datasets/hallisky/AuthorMix)
-
-```
-from datasets import load_dataset
-data = load_dataset("hallisky/AuthorMix")
-```
-
-
-## More Detailed Code: Experimental Pipeline
-Experimental code for both all domains can be found in the main folder labeled as `obfuscate.py`. Each experiment consists of the following four steps:
-
-1. Download Raw Data:  automatic
-2. Run Automatic Evaluation: automatic if using current domains
-3. Choosing Styles to Perturb for Adapters: less than 1 minute
-4. Choose Weight of Adapters: varies by AuthorMix method used (lorahub ~10min, sequential <1min)
-5. Obfuscation: varies by AuthorMix method used (lorahub ~5min, sequential 5min/style)
-6. Evaluation: ~10min
+1. Write clear, descriptive prompts that contain instructions and examples of the new style axis. 
+    - Please put the prompts in the `<style>.<ext>` file in this directory. 
+      - Replacing `<style>` with the desired style name. Please choose a style name not already used in StyleRemix.
+      - Replace `<ext>` with the desired prompt extension, for parsing. Supported extensions: `toml`, `json`, `j2`.
+      - Consider using `toml` and `json` files for simple prompts, and `j2` for advanced prompting with custom Jinja2 templating. Example prompts re provided for all.
+    - Inside the `<style>.<ext>`, please specify keys `more` and `less`, containing the prompts to paraphrase text respectively in the direction of the desired style and away from it.
+2. Run `python -m pre_obfuscation.paraphrase_style --prompts pre_obfuscation/<style>.toml`. This will paraphrase the StyleRemix base texts (present in this folder) toward and away from your desired style, using the provided prompts. Currently, only paraphrase via OpenAI API is supported.
+    - This will produce two files: `<style>_classifier_examples.jsonl` and `<style>_adapter_examples.jsonl` in the `pre_obfuscation/` directory.
+3. Run `python -m pre_obfuscation.train_style_classifier --style <style>`. This will train the classifier based on examples in `pre_obfuscation/<style>_classifier_examples.jsonl`.
+    - Please note the path where the classifier is saved.
+    - Please add the classifier path to the `obfuscation/styleremix_config.json` dictionary in this folder, in the `classifiers` section.
+4. Run `python -m pre_obfuscation.train_style_adapters --style <style>`. This will train two LoRA adapters for the style: an adapter that paraphrases toward the style and away from it, repsectively.
+    - Please note the path where the adapters are saved.
+    - Please add the adapter paths to the `obfuscation/styleremix_config.json` dictionary in this folder, in the `adapters` section.
+5. Run `python -m obfuscation.run_styleremix --config obfuscation/styleremix_config.jsonl --input_file <path_to_input_file> --text_key <text_column> --author_key <author_column> --document_key <document_column>` to run StyleRemix with the new axis.
+    - Please make sure that all specified directions are present in the `obfuscation/styleremix_config.json`.
+    - `--input_file` Accepts the path to a JSON-Lines format data, each line needs following fields:
+        - `--text_key` e.g., `fullText` -- a field containing text to be obfuscated
+        - `--author_key` e.g., `authorIDs` -- a **list** containing IDs of authors to whom this text is attributable
+        - `--document_key` e.g., `documentID` -- a unique identifier for the given text
 
 
 ## Citation
-If you find this repository useful, or you use it in your research, please cite:
+If you find this repository useful, or you use it in your research, please cite the original paper:
 ```
 @misc{fisher2024styleremixinterpretableauthorshipobfuscation,
       title={StyleRemix: Interpretable Authorship Obfuscation via Distillation and Perturbation of Style Elements}, 
@@ -82,10 +81,3 @@ If you find this repository useful, or you use it in your research, please cite:
       url={https://arxiv.org/abs/2408.15666}, 
 }
 ```
-    
-## Acknowledgements
-
-## Contact
-
-If you have any issues with the repository, questions about the paper, or anything else, please email jrfish@uw.edu and hallisky@uw.edu.
-
