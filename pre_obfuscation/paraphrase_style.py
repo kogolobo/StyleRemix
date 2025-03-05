@@ -1,6 +1,7 @@
 import os
 import pprint
 import openai
+import torch
 import tqdm
 import json
 import tomllib
@@ -67,10 +68,12 @@ class OpenAIParaphraser(Paraphraser):
 class LocalParaphraser(Paraphraser):
     def __init__(self, style: str, model_name: str, prompts: ParaphrasePrompt):
         super().__init__(style, model_name, prompts)
-        self.llm = LLM(model=self.model_name)
+        num_gpus = torch.cuda.device_count()
+        print(f"Using {num_gpus} GPUs")
+        self.llm = LLM(model=self.model_name, tensor_parallel_size=num_gpus, max_model_len=3168)
         self.sampling_params = SamplingParams(
             n=1, 
-            max_tokens=200,
+            max_tokens=400,
             skip_special_tokens=True,
             spaces_between_special_tokens=False,
             include_stop_str_in_output=False
@@ -123,11 +126,11 @@ def parse_prompts(prompts: str) -> Tuple[str, ParaphrasePrompt]:
 def main():
     parser = ArgumentParser()
     parser.add_argument("--use_openai", action="store_true")
-    parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--model_name", type=str, default="neuralmagic-ent/Llama-3.3-70B-Instruct-quantized.w8a8") #RU: msu-rcc-lair/RuadaptQwen2.5-32B-Instruct
     parser.add_argument("--prompts", type=str, default="pre_obfuscation/sarcasm.j2")
-    parser.add_argument("--adapter_base_texts", type=str, default="pre_obfuscation/disc_base_texts.jsonl")
-    parser.add_argument("--classifier_base_texts", type=str, default="pre_obfuscation/disc_for_classifiers_base_texts.jsonl")
+    parser.add_argument("--adapter_base_texts", type=str, default="/gscratch/amath/kogolobo/StyleRemix/data/en_all_samples_adapter.jsonl")
+    parser.add_argument("--classifier_base_texts", type=str, default="/gscratch/amath/kogolobo/StyleRemix/data/en_all_samples_non_adapter.jsonl")
+    parser.add_argument("--output_dir", type=str, default="/gscratch/amath/kogolobo/StyleRemix/data/")
     args = parser.parse_args()
     pprint.pprint(vars(args))
     
@@ -135,14 +138,14 @@ def main():
     paraphraser_cls = OpenAIParaphraser if args.use_openai else LocalParaphraser
     paraphraser = paraphraser_cls(style, args.model_name, prompts)
     
-    adapter_base_texts = pd.read_json(args.adapter_base_texts, lines=True)
+    adapter_base_texts = pd.read_json(args.adapter_base_texts, lines=True).sample(10)
     adapter_paraphrased = paraphraser.paraphrase(adapter_base_texts)
-    adapter_paraphrased.to_json(f"pre_obfuscation/{style}_adapter_examples.jsonl", lines=True, orient='records')
-    
+    adapter_paraphrased.to_json(os.path.join(args.output_dir, f"{style}_adapter_examples.jsonl"), lines=True, orient='records')
+        
     if args.classifier_base_texts is not None:
-        classifier_base_texts = pd.read_json(args.classifier_base_texts, lines=True)
+        classifier_base_texts = pd.read_json(args.classifier_base_texts, lines=True).sample(10)
         classifier_paraphrased = paraphraser.paraphrase(classifier_base_texts)
-        classifier_paraphrased.to_json(f"pre_obfuscation/{style}_classifier_examples.jsonl", lines=True, orient='records')
+        classifier_paraphrased.to_json(os.path.join(args.output_dir, f"{style}_classifier_examples.jsonl"), lines=True, orient='records')
 
 if __name__ == "__main__":
     main()
