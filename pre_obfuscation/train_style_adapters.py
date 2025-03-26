@@ -1,6 +1,7 @@
 import math
 import os
 import pprint
+import warnings
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, set_seed
 from tokenizers.processors import TemplateProcessing
@@ -10,11 +11,22 @@ from datasets import load_dataset
 from peft import LoraConfig, TaskType
 
 def train_adapter(dataset, direction, args):
+
+    if f'{args.style}_{direction}' not in dataset.column_names:
+        warnings.warn(f"Column {args.style}_{direction} not found in the dataset. Exiting.")
+        return
+
+    remove_cols = []
+    if f'{args.style}_less' in dataset.column_names:
+        remove_cols.append(f'{args.style}_less')
+    if f'{args.style}_more' in dataset.column_names:
+        remove_cols.append(f'{args.style}_more')
+
     dataset = dataset.map(
         lambda x: {
             "rewrite": x[f'{args.style}_{direction}'],
         },
-        remove_columns=[f'{args.style}_less', f'{args.style}_more'],
+        remove_columns=remove_cols,
         num_proc=args.num_proc
     )
     dataset = dataset.train_test_split(test_size=args.test_ratio, seed=args.seed)
@@ -32,7 +44,10 @@ def train_adapter(dataset, direction, args):
         bias = "none"
     )
     
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True)
+    model = AutoModelForCausalLM.from_pretrained(args.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True, legacy=False)
+    
+    # if args.model_name == "meta-llama/Meta-Llama-3-8B":
     bos = tokenizer.bos_token
     eos = tokenizer.eos_token
     tokenizer._tokenizer.post_processor = TemplateProcessing(
@@ -49,9 +64,7 @@ def train_adapter(dataset, direction, args):
 
     if not tokenizer.pad_token: # Set pad token if it doesn't exist
         tokenizer.add_special_tokens({'pad_token': '<padding_token>'})
-
-    model = AutoModelForCausalLM.from_pretrained(args.model_name)
-    model.resize_token_embeddings(len(tokenizer))
+        model.resize_token_embeddings(len(tokenizer))
     
     out_path = os.path.join(args.save_dir, 'adapters', f'{args.style}_{direction}')
     steps = len(dataset['train'])/(args.train_batch_size*torch.cuda.device_count())
@@ -77,8 +90,13 @@ def train_adapter(dataset, direction, args):
         max_seq_length=args.max_seq_length
     )
 
-    response_template = " ### Rewrite:"
-    formatting_prompts_func = lambda example: f"### Original: {example['original']}\n{response_template} {example['rewrite']}"
+    if args.language == "en":
+        response_template = " ### Rewrite:"
+        formatting_prompts_func = lambda example: f"### Original: {example['original']}\n{response_template} {example['rewrite']}"
+    elif args.language == "ru":
+        response_template = " ### Перепишите:"
+        formatting_prompts_func = lambda example: f"### Оригинал: {example['original']}\n{response_template} {example['rewrite']}"
+
     collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)    
     trainer = SFTTrainer(
         model,
@@ -99,7 +117,10 @@ def train_adapter(dataset, direction, args):
 def main():
     parser = ArgumentParser()
     parser.add_argument("--model_name", type=str, default="meta-llama/Meta-Llama-3-8B")
-    parser.add_argument("--save_dir", type=str, default="pre_obfuscation")
+    parser.add_argument("--direction", type=str, choices=["less", "more"], default="more")
+    parser.add_argument("--language", type=str, default="en")
+    parser.add_argument("--save_dir", type=str, default="en_adapters/")
+    parser.add_argument("--data_dir", type=str, default="en_data/")
     parser.add_argument("--style", type=str, default="sarcasm")
     parser.add_argument("--test_ratio", type=float, default=0.15)
     parser.add_argument("--num_proc", type=int, default=4)
@@ -119,10 +140,9 @@ def main():
     pprint.pprint(vars(args))
 
     set_seed(args.seed)
-    dataset = load_dataset("json", data_files=f"pre_obfuscation/{args.style}_classifier_examples.jsonl")['train'].remove_columns(['book_id', 'title', 'date'])
-    
-    for direction in ["less", "more"]:
-        train_adapter(dataset, direction, args)    
+    data_filepath = os.path.join(args.data_dir, f"{args.style}_adapter_examples.jsonl")
+    dataset = load_dataset("json", data_files=data_filepath)['train']#.remove_columns(['book_id', 'title'])
+    train_adapter(dataset, args.direction, args)
 
 if __name__ == "__main__":
     main()

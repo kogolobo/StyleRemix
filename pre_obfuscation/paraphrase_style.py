@@ -29,14 +29,21 @@ class Paraphraser(ABC):
     def paraphrase(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         less, more = self.paraphrase_prompts(df['original'])
-        df[f'{self.style}_less'] = less
-        df[f'{self.style}_more'] = more
+        if less is not None:
+            df[f'{self.style}_less'] = less
+        
+        if more is not None:
+            df[f'{self.style}_more'] = more
         return df
     
     def paraphrase_prompts(self, texts: List[str]) -> Tuple[List[str], List[str]]:
         user_prompts = [f"Paragraph: {text} \n Rewrite:" for text in texts]
-        less = self.make_completions(self.prompts.less, user_prompts)
-        more = self.make_completions(self.prompts.more, user_prompts)
+        less, more = None, None
+        if self.prompts.less != "":
+            less = self.make_completions(self.prompts.less, user_prompts)
+        
+        if self.prompts.more != "":
+            more = self.make_completions(self.prompts.more, user_prompts)
         return less, more
 
     @abstractmethod
@@ -126,11 +133,11 @@ def parse_prompts(prompts: str) -> Tuple[str, ParaphrasePrompt]:
 def main():
     parser = ArgumentParser()
     parser.add_argument("--use_openai", action="store_true")
-    parser.add_argument("--model_name", type=str, default="neuralmagic-ent/Llama-3.3-70B-Instruct-quantized.w8a8") #RU: msu-rcc-lair/RuadaptQwen2.5-32B-Instruct
+    parser.add_argument("--model_name", type=str, default="neuralmagic-ent/Llama-3.3-70B-Instruct-quantized.w8a8")
     parser.add_argument("--prompts", type=str, default="pre_obfuscation/sarcasm.j2")
-    parser.add_argument("--adapter_base_texts", type=str, default="/gscratch/amath/kogolobo/StyleRemix/data/en_all_samples_adapter.jsonl")
-    parser.add_argument("--classifier_base_texts", type=str, default="/gscratch/amath/kogolobo/StyleRemix/data/en_all_samples_non_adapter.jsonl")
-    parser.add_argument("--output_dir", type=str, default="/gscratch/amath/kogolobo/StyleRemix/data/")
+    parser.add_argument("--adapter_base_texts", type=str, default="pre_obfuscation/disc_base_texts.jsonl")
+    parser.add_argument("--classifier_base_texts", type=str, default="pre_obfuscation/disc_for_classifiers_base_texts.jsonl")
+    parser.add_argument("--output_dir", type=str, default="en_data/")
     args = parser.parse_args()
     pprint.pprint(vars(args))
     
@@ -138,11 +145,12 @@ def main():
     paraphraser_cls = OpenAIParaphraser if args.use_openai else LocalParaphraser
     paraphraser = paraphraser_cls(style, args.model_name, prompts)
     
-    adapter_base_texts = pd.read_json(args.adapter_base_texts, lines=True).sample(10)
-    adapter_paraphrased = paraphraser.paraphrase(adapter_base_texts)
-    adapter_paraphrased.to_json(os.path.join(args.output_dir, f"{style}_adapter_examples.jsonl"), lines=True, orient='records')
+    if args.adapter_base_texts != "":
+        adapter_base_texts = pd.read_json(args.adapter_base_texts, lines=True).sample(10)
+        adapter_paraphrased = paraphraser.paraphrase(adapter_base_texts)
+        adapter_paraphrased.to_json(os.path.join(args.output_dir, f"{style}_adapter_examples.jsonl"), lines=True, orient='records')
         
-    if args.classifier_base_texts is not None:
+    if args.classifier_base_texts != "":
         classifier_base_texts = pd.read_json(args.classifier_base_texts, lines=True).sample(10)
         classifier_paraphrased = paraphraser.paraphrase(classifier_base_texts)
         classifier_paraphrased.to_json(os.path.join(args.output_dir, f"{style}_classifier_examples.jsonl"), lines=True, orient='records')
